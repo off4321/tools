@@ -1,0 +1,31 @@
+python3 create_packets.py --protocol all --count 20 --output output/all_protocols.pcap --verbose
+HTTP パケット作成開始: 20パケット
+HTTP パケット作成完了: 20パケット
+パケットを output/all_protocols_http_20250329105535.pcap に保存しました (20 パケット)
+ARP パケット作成開始: 20パケット
+パケットを output/all_protocols_arp_20250329105535.pcap に保存しました (20 パケット)
+ICMP パケット作成開始: 20パケット
+ICMP パケット作成完了: 22パケット
+パケットを output/all_protocols_icmp_20250329105535.pcap に保存しました (22 パケット)
+DNS パケット作成開始: 20パケット
+DNS パケット作成完了: 18パケット
+パケットを output/all_protocols_dns_20250329105535.pcap に保存しました (18 パケット)
+TCP パケット作成開始: 20パケット
+TCP パケット作成完了: 22パケット
+パケットを output/all_protocols_tcp_20250329105535.pcap に保存しました (22 パケット)
+UDP パケット作成開始: 20パケット
+UDP パケット作成完了: 21パケット
+パケットを output/all_protocols_udp_20250329105535.pcap に保存しました (21 パケット)
+X.25 パケット作成開始: 20パケット
+X.25 Call Request パケット作成
+X.25 Call Accepted パケット作成
+X.25 データパケット 14 組作成
+X.25 パケット作成完了: 合計 34 パケット
+パケットを output/all_protocols_x25_20250329105535.pcap に保存しました (34 パケット)
+パケット生成処理が完了しました。
+
+cd /app/work/test/packet_create
+python3 create_packets.py --protocol all --count 20 --output output/all_protocols.pcap --verbose
+
+cd /app/work
+python3 -m src.main test/packet_create/output/all_protocols_http_20250329105535.pcap -o output_http.md -f mermaid -m 100 -v
