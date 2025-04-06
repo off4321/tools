@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -66,32 +67,64 @@ func NewTsharkInfoGetter(filePath string, debugMode bool, maxPackets int, source
 }
 
 func readTsharkPath() string {
-	if runtime.GOOS == "windows" || runtime.GOOS == "MacOS" {
-		// WindowsまたはMacOSの場合、tsharkのパスを取得
-		// config.pkseqを開き、"tsharkDir="行を探してパスを返却
-		file, err := os.Open("../config/config.pkseq")
-		if err != nil {
-			// 見つからない場合やエラー時のデフォルト動作
-			return "tshark"
-		}
-		defer file.Close()
+	// デバッグのために現在の作業ディレクトリを表示
+	//currentDir, _ := os.Getwd()
+	//mt.Println("現在の作業ディレクトリ:", currentDir)
 
-		reader := bufio.NewReader(file)
-		for {
-			line, err := reader.ReadString('\n')
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				break
-			}
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "tsharkDir=") {
-				return strings.TrimPrefix(line, "tsharkDir=")
+	if runtime.GOOS == "windows" || runtime.GOOS == "MacOS" {
+		// 設定ファイルから読み込み
+		path := "config/config.pkseq"
+		//fmt.Println("設定ファイル検索:", path)
+		file, err := os.Open(path)
+		if err == nil {
+			//fmt.Println("設定ファイルを見つけました:", path)
+			defer file.Close()
+			reader := bufio.NewReader(file)
+			for {
+				line, err := reader.ReadString('\n')
+				if err == io.EOF || err != nil {
+					break
+				}
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "tsharkDir=") {
+					// 引用符を取り除く処理
+					path := strings.TrimPrefix(line, "tsharkDir=")
+					path = strings.Trim(path, "\"")
+					//fmt.Println("tsharkパスを設定:", path)
+					return path
+				}
 			}
 		}
+
+		// 環境変数PATHからtsharkを探す
+		pathEnv := os.Getenv("PATH")
+		pathDirs := strings.Split(pathEnv, ";") // Windowsの場合
+
+		for _, dir := range pathDirs {
+			tsharkPath := filepath.Join(dir, "tshark.exe")
+			if _, err := os.Stat(tsharkPath); err == nil {
+				//fmt.Println("PATHから見つかったtshark:", tsharkPath)
+				return tsharkPath
+			}
+		}
+
+		// Wiresharkの標準インストールディレクトリを確認
+		commonPaths := []string{
+			"C:\\Program Files\\Wireshark\\tshark.exe",
+			"C:\\Program Files (x86)\\Wireshark\\tshark.exe",
+		}
+
+		for _, path := range commonPaths {
+			if _, err := os.Stat(path); err == nil {
+				//fmt.Println("標準パスから見つかったtshark:", path)
+				return path
+			}
+		}
+
+		fmt.Println("tsharkが見つかりません。デフォルトのパスを使用します。")
 		return "tshark"
 	} else {
+		// Linuxの場合は変更なし
 		whichCmd := exec.Command("which", "tshark")
 		output, err := whichCmd.Output()
 		if err == nil && len(output) > 0 {
@@ -248,8 +281,16 @@ func (g *TsharkInfoGetter) GetPacketInfo() ([]*models.Packet, error) {
 func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 	// プロトコル名に応じたtsharkフィルタを構築
 	filter := fmt.Sprintf("frame.number==%s", packet.Number)
+	tsharkPath := readTsharkPath()
 
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("tshark -r %s -Y '%s' -V", g.FilePath, filter))
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" || runtime.GOOS == "MacOS" {
+		// WindowsまたはMacOSの場合、直接コマンドを実行
+		cmd = exec.Command(tsharkPath, "-r", g.FilePath, "-Y", filter, "-V")
+	} else {
+		// Linux等では従来の"sh -c"呼び出し
+		cmd = exec.Command("sh", "-c", fmt.Sprintf("%s -r %s -Y '%s' -V", tsharkPath, g.FilePath, filter))
+	}
 
 	if g.DebugMode {
 		fmt.Println("詳細情報取得コマンド:", cmd.String())
