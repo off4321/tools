@@ -1,344 +1,115 @@
 # API ドキュメント
-このドキュメントは、`packet_sequence ツールの API リファレンス` を提供し、`関数の説明`、`パラメーター`、および `戻り値` について記載しています。  
-ツールの内部動作や拡張・修正を検討する開発者を対象としています。
+このドキュメントは、ツールの内部動作を理解し、拡張または変更したい開発者向けに、`関数の説明`、`パラメータ`、`戻り値`を含む`パケットシーケンスツールのAPI参照`を提供します。
 
-## リファレンスフォーマット
-```bash
-#############
-# クラス名: EX_class
-# 関数名: EX_function
-# 説明: EX_description
-# パラメーター:
-#   - param1: EX_param1
-#   - param2: EX_param2
-# 戻り値: EX_return_value
-#############
-```
-## クラス一覧
-### 共通クラス
-- `PacketSequenceAnalyzer` - 動作部分をまとめたクラス
-- `ReadPcap` - pcap ファイルを読み込むクラス
-- `ExtractData` - pcap ファイルからデータを抽出するクラス
-- `DiscriminateProtocol` - プロトコルを判別するクラス
-- `DiscriminateEthernet` - Ehternetを判別するクラス(VLANタグを含む)
-- `DiscriminateIp` - IPを判別するクラス
-- `DiscriminateMac` - MACを判別するクラス
-- `DiscriminatePort` - ポートを判別するクラス
-- `DiscriminateAvailable` - 使用可能なプロトコルを判別するクラス
-- `WriteMermaid` - Mermaid 記法で出力するクラス
-- `WriteFile` - ファイルに出力するクラス
-### L2プロトコル
-- `AnalyzeArp` - ARP内の詳細情報を解析するクラス
-- `AnalyzeX.25` - X.25内の詳細情報を解析するクラス
-### L3プロトコル
-- `AnalyzeIpv4` - IPv4内の詳細情報を解析するクラス
-- `AnalyzeIpv6` - IPv6内の詳細情報を解析するクラス
-- `AnalyzeIcmp` - ICMP内の詳細情報を解析するクラス
-- `AnalyzeIcmpv6` - ICMPv6内の詳細情報を解析するクラス
-### L4プロトコル
-- `AnalyzeTcp` - TCP内の詳細情報を解析するクラス
-- `AnalyzeUdp` - UDP内の詳細情報を解析するクラス
-- `AnalyzeSctp` - SCTP内の詳細情報を解析するクラス
-### L7プロトコル
-- `AnalyzeHttp` - HTTP内の詳細情報を解析するクラス
-- `AnalyzeHttps` - HTTPS内の詳細情報を解析するクラス
-- `AnalyzeDns` - DNS内の詳細情報を解析するクラス
+## パッケージ構成
 
-## クラス詳細
-### PacketSequenceAnalyzer
-```bash
-#############
-# クラス名: PacketSequenceAnalyzer
-# 説明: 動作部分をまとめたクラス
-# パラメーター:
-#   - pcap_file: pcap ファイルのパス
-#   - output_file: 出力ファイルのパス
-#   - max_entries: 抽出するエントリの最大数
-#   - options: オプション
-# 戻り値: なし
-#############
-```
-### ReadPcap
-```bash
-#############
-# クラス名: ReadPcap
-# 説明: pcap ファイルを読み込むクラス
-# パラメーター:
-#   - pcap_file: pcap ファイルのパス
-# 戻り値: なし
-#############
-```
-### ExtractData
-```bash
-#############
-# クラス名: ExtractData
-# 説明: pcap ファイルからデータを抽出するクラス
-# パラメーター:
-#   - pcap_file: pcap ファイルのパス
-#   - max_entries: 抽出するエントリの最大数
-# 戻り値: PacketSequenceData(パケットシーケンス情報を含むデータ構造)
-##############
-```
-### DiscriminateProtocol
-```bash
-#############
-# クラス名: DiscriminateProtocol
-# 説明: プロトコルを判別するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: プロトコル名
-#############
+### models パッケージ
+パケット情報のデータモデルを定義します。
+
+```go
+// Packet はパケット情報を格納する基本構造体
+type Packet struct {
+	Number      string   // パケット番号
+	Time        string   // パケットの捕捉時間
+	Source      string   // 送信元アドレス
+	Destination string   // 宛先アドレス
+	Protocol    string   // プロトコル名
+	Length      string   // パケット長
+	Info        string   // 基本情報
+	Details     []string // 詳細情報
+	IsSupported bool     // サポート対象プロトコルかどうか
+}
+
+// NewPacket は新しいPacketインスタンスを生成する
+func NewPacket(number, time, source, destination, protocol, length, info string) *Packet
+
+// AddDetail はパケットに詳細情報を追加する
+func (p *Packet) AddDetail(detail string)
 ```
 
-### DiscriminateEthernet
-```bash
-#############
-# クラス名: DiscriminateEthernet
-# 説明: Ehternetを判別するクラス(VLANタグを含む)
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: 宛先MACアドレス、送信元MACアドレス、VLANタグ
-#############
-```
-### DiscriminateIp
-```bash
-#############
-# クラス名: DiscriminateIp
-# 説明: IPを判別するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: 宛先IPアドレス、送信元IPアドレス
-###########
-```
-### DiscriminateMac
-```bash
-##############
-# クラス名: DiscriminateMac
-# 説明: MACを判別するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: 宛先MACアドレス、送信元MACアドレス
-############
-```
-### DiscriminatePort
-```bash
-#############
-# クラス名: DiscriminatePort
-# 説明: ポート番号を判別するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: 宛先ポート番号、送信元ポート番号
-#############
-```
-### DiscriminateAvailable
-```bash
-#############
-# クラス名: DiscriminateAvailable
-# 説明: 使用可能なプロトコルを判別するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: 使用可能なプロトコル名
-#############
-```
-### WriteMermaid
-```bash
-#############
-# クラス名: WriteMermaid
-# 説明: Mermaid 記法で出力するクラス
-# パラメーター:
-#   - PacketSequenceData: パケットシーケンス情報を含むデータ構造
-# 戻り値: なし
-#############
-```
-### WriteFile
-```bash
-##############
-# クラス名: WriteFile
-# 説明: ファイルに出力するクラス
-# パラメーター:
-#   - output_file: 出力ファイルのパス
-# 戻り値: なし
-#############
-```
-### AnalyzeArp
-```bash
-#############
-# クラス名: AnalyzeArp
-# 説明: ARP内の詳細情報を解析するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: ARPの詳細情報
-#############
-```
-### AnalyzeX.25
-```bash
-#############
-# クラス名: AnalyzeX.25
-# 説明: X.25内の詳細情報を解析するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: X.25の詳細情報
-#############
+### reader パッケージ
+PCAPファイルの読み込みを管理します。
+
+```go
+// Reader はパケットファイルの読み込みを管理するインターフェース
+type Reader interface {
+	ReadFile() error
+	GetFilePath() string
+	Exists() bool
+}
+
+// NewPCAPReader は新しいPCAPReaderを生成する
+func NewPCAPReader(filePath string) *PCAPReader
 ```
 
-### AnalyzeIpv4
-```bash
-#############
-# クラス名: AnalyzeIpv4
-# 説明: IPv4内の詳細情報を解析するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: IPv4の詳細情報
-#############
-```
-### AnalyzeIpv6
-```bash
-#############
-# クラス名: AnalyzeIpv6
-# 説明: IPv6内の詳細情報を解析するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: IPv6の詳細情報
-#############
-```
-### AnalyzeIcmp
-```bash
-#############
-# クラス名: AnalyzeIcmp
-# 説明: ICMP内の詳細情報を解析するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: ICMPの詳細情報
-#############
-```
-### AnalyzeIcmpv6
-```bash
-#############
-# クラス名: AnalyzeIcmpv6
-# 説明: ICMPv6内の詳細情報を解析するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: ICMPv6の詳細情報
-#############
-```
-### AnalyzeTcp
-```bash
-#############
-# クラス名: AnalyzeTcp
-# 説明: TCP内の詳細情報を解析するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: TCPの詳細情報
-#############
-```
-### AnalyzeUdp
-```bash
-#############
-# クラス名: AnalyzeUdp
-# 説明: UDP内の詳細情報を解析するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: UDPの詳細情報
-#############
-```
-#### AnalyzeSctp
-```bash
-#############
-# クラス名: AnalyzeSctp
-# 説明: SCTP内の詳細情報を解析するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: SCTPの詳細情報
-#############
+### infogetter パッケージ
+パケット情報の取得を管理します。
+
+```go
+// InfoGetter はパケット情報の取得を管理するインターフェース
+type InfoGetter interface {
+	GetPacketInfo() ([]*models.Packet, error)
+	GetDetailedInfo(packet *models.Packet) error
+}
+
+// NewTsharkInfoGetter は新しいTsharkInfoGetterを生成する
+func NewTsharkInfoGetter(filePath string, debugMode bool, maxPackets int, sourceIP, destinationIP, protocolName, ipFlag, startTime, endTime string) *TsharkInfoGetter
 ```
 
-### AnalyzeHttp
-```bash
-#############
-# クラス名: AnalyzeHttp
-# 説明: HTTP内の詳細情報を解析するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: HTTPの詳細情報
-#############
-```
-### AnalyzeHttps
-```bash
-#############
-# クラス名: AnalyzeHttps
-# 説明: HTTPS内の詳細情報を解析するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: HTTPSの詳細情報
-#############
-```
-### AnalyzeDns
-```bash
-#############
-# クラス名: AnalyzeDns
-# 説明: DNS内の詳細情報を解析するクラス
-# パラメーター:
-#   - packet: パケットデータ
-# 戻り値: DNSの詳細情報
-#############
-```
-```mermaid
+### protocol パッケージ
+各プロトコルの解析機能を提供します。
 
-graph TD
-    %% メインクラス
-    PacketSequenceAnalyzer --> ReadPcap
-    %%PacketSequenceAnalyzer --> ExtractData
-    PacketSequenceAnalyzer --> WriteMermaid
-    PacketSequenceAnalyzer --> WriteFile
-    
-    %% 読み込みと抽出のフロー
-    ReadPcap --> ExtractData
-    
-    %% 基本要素の判別（最初に実行）
-    ExtractData --> DiscriminateEthernet
-    %%ExtractData --> DiscriminateIp
-    %%ExtractData --> DiscriminateMac
-    %%ExtractData --> DiscriminatePort
-    %%ExtractData --> DiscriminateAvailable
-    
-    %% プロトコルの詳細判別（基本要素の判別後）
-    %% ExtractData --> DiscriminateProtocol
-    
-    %% 各判別クラスの関連付け
-    DiscriminateEthernet --> DiscriminateMac
-    DiscriminateMac --> DiscriminateIp
-    DiscriminateIp --> DiscriminatePort
-    DiscriminatePort --> DiscriminateProtocol
-    
-    %% プロトコルの詳細判別は各要素の判別結果を利用
-    %%DiscriminateProtocol --> DiscriminateEthernet
-    %%DiscriminateProtocol --> DiscriminateIp
-    %%DiscriminateProtocol --> DiscriminateMac
-    %%DiscriminateProtocol --> DiscriminatePort
-    DiscriminateProtocol --> DiscriminateAvailable
-    DiscriminateProtocol -- PacketSequenceData --> ExtractData
-    
-    %% L2プロトコル解析
-    DiscriminateProtocol --> AnalyzeArp
-    DiscriminateProtocol --> AnalyzeX.25
-    
-    %% L3プロトコル解析
-    DiscriminateProtocol --> AnalyzeIpv4
-    DiscriminateProtocol --> AnalyzeIpv6
-    DiscriminateProtocol --> AnalyzeIcmp
-    DiscriminateProtocol --> AnalyzeIcmpv6
-    
-    %% L4プロトコル解析
-    DiscriminateProtocol --> AnalyzeTcp
-    DiscriminateProtocol --> AnalyzeUdp
-    DiscriminateProtocol --> AnalyzeSctp
-    
-    %% L7プロトコル解析
-    AnalyzeTcp --> AnalyzeHttp
-    AnalyzeTcp --> AnalyzeHttps
-    AnalyzeUdp --> AnalyzeDns
-    
-    %% 出力処理
-    ExtractData -- PacketSequenceData --> WriteMermaid
-    WriteMermaid --> WriteFile
+```go
+// Analyzer はプロトコル解析機能を提供するインターフェース
+type Analyzer interface {
+	Analyze(packet *models.Packet) ([]string, error)
+}
+
+// 各プロトコルアナライザーの生成関数
+func NewTCPAnalyzer(debugMode bool) *TCPAnalyzer
+func NewUDPAnalyzer(debugMode bool) *UDPAnalyzer
+func NewARPAnalyzer(debugMode bool) *ARPAnalyzer
+func NewICMPAnalyzer(debugMode bool) *ICMPAnalyzer
+func NewDNSAnalyzer(debugMode bool) *DNSAnalyzer
+func NewHTTPAnalyzer(debugMode bool) *HTTPAnalyzer
+func NewHTTPSAnalyzer(debugMode bool) *HTTPSAnalyzer
+func NewSCTPAnalyzer(debugMode bool) *SCTPAnalyzer
+func NewIPv4Analyzer(debugMode bool) *IPv4Analyzer
+func NewX25Analyzer(debugMode bool) *X25Analyzer
+func NewNTPAnalyzer(debugMode bool) *NTPAnalyzer
 ```
+
+### writer パッケージ
+パケット情報を出力する機能を提供します。
+
+```go
+// Writer はパケット情報を出力するインターフェース
+type Writer interface {
+	Write(packets []*models.Packet) error
+}
+
+// NewMermaidWriter は新しいMermaidWriterを生成する
+func NewMermaidWriter(outputPath string, debugMode bool) *MermaidWriter
+```
+
+### checker パッケージ
+プロトコルのサポート状況を確認します。
+
+```go
+// ProtocolChecker はプロトコルがサポート対象かどうかを判定するインターフェース
+type ProtocolChecker interface {
+	IsSupported(protocol string) bool
+	CheckPackets(packets []*models.Packet)
+}
+
+// NewTsharkProtocolChecker は新しいTsharkProtocolCheckerを生成する
+func NewTsharkProtocolChecker(supportedProtocols []string, debugMode bool) *TsharkProtocolChecker
+```
+
+## メインプログラムのフロー
+1. コマンドライン引数の解析
+2. PCAPファイルの読み込み
+3. パケット情報の取得
+4. プロトコルのサポート状況確認
+5. 詳細情報の取得と解析
+6. シーケンス図の生成と出力

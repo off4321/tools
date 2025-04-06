@@ -1,47 +1,62 @@
-# 設計書
-このドキュメントは、packet_sequence ツールの設計概要を提供し、そのアーキテクチャ、コンポーネント、及びデータフローについて説明します。  
-ツールの内部動作の理解や拡張・修正を行う開発者を対象としています。
+# 設計
+このドキュメントは、パケットシーケンスツールの設計概要（アーキテクチャ、コンポーネント、データフロー）を提供します。  
+これは、ツールの内部動作を理解し、拡張または変更したい開発者を対象としています。
 
 ## アーキテクチャ
-packet_sequence ツールは、tcpdump ファイルをシーケンスチャートに変換するために設計されています。
+パケットシーケンスツールは、pcapファイルをシーケンスチャートに変換するように設計されています。
 
 ### コンポーネント
 ```mermaid
 graph TD
-    A[Packet Capture Module] --> B[Analysis Module]
-    B --> C[Sequence Diagram Generator]
-    C --> D[Output Renderer]
+    A[reader - pcapファイル読み込み] --> B[infogetter - パケット情報取得]
+    B --> C[protocol - プロトコル解析]
+    C --> D[writer - シーケンス図生成]
 ```
 
+### パッケージ構成
+- **cmd**: メインプログラムエントリーポイント
+- **reader**: pcapファイルの読み込みを担当
+- **infogetter**: tsharkを使ったパケット情報の取得
+- **protocol**: 各プロトコル固有の解析ロジック
+- **models**: データモデル定義
+- **writer**: シーケンス図生成と出力
+- **checker**: プロトコルサポート状況の確認
+- **config**: 設定ファイル関連
+
 ### データフロー
-1. **pcap ファイルの読み込み**  
-   ツールは pcap ファイルからデータを読み込みます。
+1. **pcapファイルの読み込み**  
+   `reader`パッケージはpcapファイルの存在確認を行います。
 
-2. **データ抽出**  
-   pcap ファイルから destination、source、protocol などの情報を抽出します。  
-   このプロセスは、出力ファイルごとに最大50件のエントリを抽出し、ファイルの終わりまで続けられます。  
-   将来的なアップデートでは、抽出するパラメーターの選択や追加が可能になる予定です。
+2. **パケット情報の抽出**  
+   `infogetter`パッケージはtsharkを使用して、pcapファイルからパケット情報を抽出します。
+   送信元、送信先、プロトコルなどの基本情報を取得します。
 
-3. **Mermaid 記法による図の生成**  
-   抽出された情報を使用して、Mermaid 記法でシーケンス図を生成します。
+3. **プロトコル固有の解析**  
+   `protocol`パッケージ内の各プロトコルアナライザーが、パケットの詳細情報を解析します。
 
-4. **ファイル出力**  
-   生成された Mermaid コンテンツをファイルに出力します。
+4. **Mermaid図の生成**  
+   `writer`パッケージがMermaid形式でシーケンス図を生成します。
+
+5. **ファイル出力**  
+   生成されたMermaidコンテンツがMarkdownファイルに出力されます。
 
 ```mermaid
 sequenceDiagram
-    participant R as pcap Reader
-    participant E as Data Extractor
-    participant M as Mermaid Generator
-    participant O as File Output
-    R->>E: 1. pcap ファイルの読み込み
-    E->>M: 2. destination、source、protocol の抽出（最大50件）
-    M->>O: 3. Mermaid 記法で図の生成
-    O-->>User: 4. ファイル出力
+    participant M as main
+    participant R as reader.PCAPReader
+    participant I as infogetter.TsharkInfoGetter
+    participant C as checker.ProtocolChecker
+    participant P as protocol.Analyzer
+    participant W as writer.MermaidWriter
+    
+    M->>R: 1. pcapファイルを読み込む
+    M->>I: 2. パケット情報を取得
+    I-->>M: パケットリスト
+    M->>C: 3. プロトコルサポート確認
+    M->>I: 4. 詳細情報を取得
+    I->>P: プロトコル別の解析
+    P-->>I: 解析結果
+    I-->>M: 詳細情報付きパケット
+    M->>W: 5. シーケンス図を生成
+    W-->>M: 出力結果
 ```
-
-## X.25プロトコル解析対応
-- src/protocol_analyzer/x25.py に AnalyzeX25 クラスを追加し、
-  X.25固有のフィールド(DLCIなど)を解析できるようにしました。
-- DiscriminateProtocol内で該当レイヤー(x25)を検出した場合、
-  AnalyzeX25 を使用して詳細を抽出する設計になっています。
