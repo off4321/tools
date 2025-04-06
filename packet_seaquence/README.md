@@ -16,7 +16,6 @@ PacketSequenceは、pcapファイルを解析して、パケットのシーケ�
 ```bash
 git clone <リポジトリURL>
 cd packet_seaquence
-go build -o packet_sequence src/cmd/main.go
 ```
 
 # 使い方
