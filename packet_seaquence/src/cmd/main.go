@@ -17,8 +17,19 @@ func main() {
 	// 処理開始時間を記録
 	startTime := time.Now()
 
+	// カスタムUsage設定
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "使い方: %s [オプション]\n\n", os.Args[0])
+		fmt.Fprintln(os.Stderr, "オプション:")
+		flag.PrintDefaults()
+		fmt.Fprintln(os.Stderr, "\n例:")
+		fmt.Fprintln(os.Stderr, "  パケット解析: packet_seaquence -file=capture.pcap -out=result.md")
+		fmt.Fprintln(os.Stderr, "  特定IPのみ解析: packet_seaquence -file=capture.pcap -IP=192.168.1.1")
+		fmt.Fprintln(os.Stderr, "  詳細モード: packet_seaquence -file=capture.pcap -debug=true")
+	}
+
 	// コマンドライン引数の解析
-	filePath := flag.String("file", "", "解析するpcapファイルのパス (必須)")
+	filePath := flag.String("file", "", "解析するpcapファイルのパス (必須)!!絶対パスを使ってください!!")
 	outputPath := flag.String("out", "output.md", "出力するマークダウンファイルのパス")
 	maxPackets := flag.Int("max", 0, "処理する最大パケット数 (0=すべて)")
 	debugMode := flag.Bool("debug", false, "デバッグモードの有効化")
@@ -29,8 +40,15 @@ func main() {
 	startTimeArg := flag.String("startTime", "", "フィルタ適用開始時刻(例: 2023-10-01 12:00:00)")
 	endTimeArg := flag.String("endTime", "", "フィルタ適用終了時刻(例: 2023-10-01 12:00:00)")
 	version := flag.Bool("version", false, "バージョン情報の表示")
+	help := flag.Bool("help", false, "ヘルプ情報の表示")
 
 	flag.Parse()
+
+	// ヘルプの表示
+	if *help {
+		flag.Usage()
+		return
+	}
 
 	// バージョン情報の表示
 	if *version {
@@ -103,20 +121,11 @@ func main() {
 	fmt.Printf("サポート対象プロトコル: %d/%d\n", supportedCount, len(packets))
 
 	// 4. サポート対象プロトコルの詳細情報取得
-	fmt.Println("ステップ4: プロトコル詳細情報の解析...")
-	for i, packet := range packets {
-		if packet.IsSupported {
-			if *debugMode {
-				fmt.Printf("パケット %d/%d (%s) の詳細情報を取得中...\n", i+1, len(packets), packet.Protocol)
-			}
-			err := infoGetter.GetDetailedInfo(packet)
-			if err != nil {
-				fmt.Printf("詳細情報取得エラー (パケット %s): %v\n", packet.Number, err)
-				continue
-			}
-		}
+	err = getPacketDetails(infoGetter, packets)
+	if err != nil {
+		fmt.Printf("詳細情報取得エラー: %v\n", err)
+		os.Exit(1)
 	}
-	fmt.Println("詳細情報の解析が完了しました")
 
 	// 5. Markdown形式での出力
 	fmt.Println("ステップ5: シーケンス図の生成...")
@@ -130,4 +139,25 @@ func main() {
 	// 処理時間を計算
 	elapsedTime := time.Since(startTime)
 	fmt.Printf("\n処理が完了しました。出力ファイル: %s (所要時間: %v)\n", *outputPath, elapsedTime)
+}
+
+// getPacketDetails はパケットの詳細情報を取得する
+func getPacketDetails(infoGetter infogetter.InfoGetter, packets []*models.Packet) error {
+
+	fmt.Printf("ステップ4: プロトコル詳細情報の解析...\n")
+
+	// この時点で既に詳細情報はプリロードされているはず
+	for i, packet := range packets {
+		fmt.Printf("パケット %d/%d (%s) の詳細情報を処理中...\n", i+1, len(packets), packet.Protocol)
+		err := infoGetter.GetDetailedInfo(packet)
+		if err != nil {
+			// 詳細情報の取得に失敗した場合はエラーメッセージを表示
+			// ただし、処理は続行する
+			fmt.Printf("詳細情報取得エラー: %v\n", err)
+		}
+	}
+
+	fmt.Println("詳細情報の解析が完了しました")
+
+	return nil
 }

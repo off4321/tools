@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant 172_16_1_254
+    participant ?
+    participant 172_16_2_254
+    participant 172_16_2_1
+    participant 172_16_2_2
+    participant 172_16_1_253
+    172_16_1_253->>172_16_1_254: ICMP ECHO_REQUEST
+    172_16_1_254->>172_16_1_253: ICMP ECHO_REPLY
+    172_16_1_253->>172_16_1_254: ICMP ECHO_REQUEST
+    172_16_1_254->>172_16_1_253: ICMP ECHO_REPLY
+    ?->>?: ARP REQUEST
+    ?->>?: ARP REQUEST
+    ?->>?: ARP REPLY
+    ?->>?: ARP REPLY
+    ?->>?: ARP REQUEST
+    ?->>?: ARP REPLY
+    172_16_2_254->>172_16_2_1: ICMP ECHO_REQUEST
+    172_16_2_1->>172_16_2_254: ICMP ECHO_REPLY
+    172_16_2_254->>172_16_2_1: ICMP ECHO_REQUEST
+    172_16_2_1->>172_16_2_254: ICMP ECHO_REPLY
+    ?->>?: ARP REQUEST
+    ?->>?: ARP REPLY
+    ?->>?: ARP REQUEST
+    ?->>?: ARP REPLY
+    172_16_2_254->>172_16_2_2: ICMP ECHO_REQUEST
+    172_16_2_2->>172_16_2_254: ICMP ECHO_REPLY
+    172_16_2_254->>172_16_2_2: ICMP ECHO_REQUEST
+    172_16_2_2->>172_16_2_254: ICMP ECHO_REPLY
+    ?->>?: ARP REQUEST
+    ?->>?: ARP REPLY

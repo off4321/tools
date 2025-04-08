@@ -33,6 +33,8 @@ type TsharkInfoGetter struct {
 	IPFlag        string
 	StartTime     string
 	EndTime       string
+	packetDetails map[string]string // パケット番号をキーとした詳細情報のマップ
+	initialized   bool              // 初期化フラグ
 }
 
 // NewTsharkInfoGetter は新しいTsharkInfoGetterを生成する
@@ -48,6 +50,8 @@ func NewTsharkInfoGetter(filePath string, debugMode bool, maxPackets int, source
 		IPFlag:        ipFlag,
 		StartTime:     startTime,
 		EndTime:       endTime,
+		packetDetails: make(map[string]string),
+		initialized:   false,
 	}
 
 	// 各プロトコルのアナライザーを初期化
@@ -67,62 +71,53 @@ func NewTsharkInfoGetter(filePath string, debugMode bool, maxPackets int, source
 }
 
 func readTsharkPath() string {
-	// デバッグのために現在の作業ディレクトリを表示
-	//currentDir, _ := os.Getwd()
-	//mt.Println("現在の作業ディレクトリ:", currentDir)
-
 	if runtime.GOOS == "windows" || runtime.GOOS == "MacOS" {
 		// 設定ファイルから読み込み
 		path := "config/config.pkseq"
-		//fmt.Println("設定ファイル検索:", path)
 		file, err := os.Open(path)
-		if err == nil {
-			//fmt.Println("設定ファイルを見つけました:", path)
-			defer file.Close()
-			reader := bufio.NewReader(file)
-			for {
-				line, err := reader.ReadString('\n')
-				if err == io.EOF || err != nil {
-					break
-				}
-				line = strings.TrimSpace(line)
-				if strings.HasPrefix(line, "tsharkDir=") {
-					// 引用符を取り除く処理
-					path := strings.TrimPrefix(line, "tsharkDir=")
-					path = strings.Trim(path, "\"")
-					//fmt.Println("tsharkパスを設定:", path)
-					return path
-				}
+		if err != nil {
+			fmt.Printf("設定ファイル %s が開けません: %v\n", path, err)
+			fmt.Println("tsharkが見つかりません。設定ファイルを確認してください。")
+			return "tshark" // 設定がなくても"tshark"を返す
+		}
+		fmt.Println("設定ファイルを読み込み中...")
+
+		defer file.Close()
+		reader := bufio.NewReader(file)
+
+		for {
+			line, err := reader.ReadString('\n')
+			if err == io.EOF || err != nil {
+				fmt.Println("設定ファイルの読み込みが完了しました。")
+				//break
+			}
+			line = strings.TrimSpace(line)
+			fmt.Println("debug-読み込んだ行:", line)
+			if strings.HasPrefix(line, "tsharkDir=") {
+				// 引用符を取り除く処理
+				dir := strings.TrimPrefix(line, "tsharkDir=")
+				dir = strings.Trim(dir, "\"")
+
+				// ファイル名部分を除去してディレクトリパスのみを取得
+				tsharkDir := filepath.Dir(dir)
+				fmt.Println("debug-tsharkDir:", tsharkDir)
+
+				// PATHに tsharkDir を追加: 現在のPATH + ";" + tsharkDir
+				currentPath := os.Getenv("PATH")
+				newPath := currentPath + ";" + tsharkDir
+				os.Setenv("PATH", newPath)
+
+				fmt.Println("-----------------------------------------------")
+				fmt.Println("tsharkをPATHに追加しました")
+				fmt.Println("コマンドプロンプトで実行する場合は以下のように入力できます：")
+				fmt.Printf("SET PATH=%%PATH%%;%s\n", tsharkDir)
+				fmt.Println("-----------------------------------------------")
+
+				// tsharkコマンドを返す
+				return "tshark"
 			}
 		}
 
-		// 環境変数PATHからtsharkを探す
-		pathEnv := os.Getenv("PATH")
-		pathDirs := strings.Split(pathEnv, ";") // Windowsの場合
-
-		for _, dir := range pathDirs {
-			tsharkPath := filepath.Join(dir, "tshark.exe")
-			if _, err := os.Stat(tsharkPath); err == nil {
-				//fmt.Println("PATHから見つかったtshark:", tsharkPath)
-				return tsharkPath
-			}
-		}
-
-		// Wiresharkの標準インストールディレクトリを確認
-		commonPaths := []string{
-			"C:\\Program Files\\Wireshark\\tshark.exe",
-			"C:\\Program Files (x86)\\Wireshark\\tshark.exe",
-		}
-
-		for _, path := range commonPaths {
-			if _, err := os.Stat(path); err == nil {
-				//fmt.Println("標準パスから見つかったtshark:", path)
-				return path
-			}
-		}
-
-		fmt.Println("tsharkが見つかりません。デフォルトのパスを使用します。")
-		return "tshark"
 	} else {
 		// Linuxの場合は変更なし
 		whichCmd := exec.Command("which", "tshark")
@@ -137,6 +132,20 @@ func readTsharkPath() string {
 // GetPacketInfo はtsharkを使用してパケット情報を取得する
 func (g *TsharkInfoGetter) GetPacketInfo() ([]*models.Packet, error) {
 	tsharkPath := readTsharkPath()
+
+	// 入力ファイルパスを絶対パスに変換
+	absFilePath, err := filepath.Abs(g.FilePath)
+	if err != nil {
+		fmt.Printf("警告: ファイルパスを絶対パスに変換できません: %v\n", err)
+		absFilePath = g.FilePath // 変換失敗時は元のパスを使用
+	} else {
+		fmt.Printf("入力ファイルの絶対パス: %s\n", absFilePath)
+	}
+
+	// ファイルの存在確認
+	if _, err := os.Stat(absFilePath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("ファイルが見つかりません: %s", absFilePath)
+	}
 
 	// tsharkコマンドを構築
 	maxOption := ""
@@ -167,22 +176,40 @@ func (g *TsharkInfoGetter) GetPacketInfo() ([]*models.Packet, error) {
 		filterExpression = strings.Join(filterParts, " and ")
 	}
 
+	// 最初に簡易コマンドでファイル形式をチェック
+	if runtime.GOOS == "windows" {
+		testCmd := exec.Command(tsharkPath, "-r", absFilePath, "-c", "1")
+		testOutput, testErr := testCmd.CombinedOutput()
+		if testErr != nil {
+			if g.DebugMode {
+				fmt.Printf("tsharkファイル読み込みテスト失敗: %v\n出力: %s\n", testErr, string(testOutput))
+			}
+			// より詳細な情報を表示するため、-vオプションを追加したコマンドを試す
+			verboseCmd := exec.Command(tsharkPath, "-v")
+			verboseOutput, _ := verboseCmd.CombinedOutput()
+			fmt.Printf("tsharkバージョン情報:\n%s\n", string(verboseOutput))
+		}
+	}
+
+	// 最初に概要情報を取得
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" || runtime.GOOS == "MacOS" {
 		// WindowsまたはMacOSの場合、tsharkのパスを取得
-		if filterExpression != "" {
-			cmd = exec.Command(tsharkPath, "-r", g.FilePath, maxOption, "-Y", filterExpression, "-T", "fields",
-				"-e", "frame.number", "-e", "frame.time", "-e", "ip.src", "-e", "ip.dst",
-				"-e", "_ws.col.Protocol", "-e", "frame.len", "-e", "_ws.col.Info",
-				"-e", "eth.src", "-e", "eth.dst", "-e", "arp.src.proto_ipv4", "-e", "arp.dst.proto_ipv4")
-		} else {
-			cmd = exec.Command(tsharkPath, "-r", g.FilePath, maxOption, "-T", "fields",
-				"-e", "frame.number", "-e", "frame.time", "-e", "ip.src", "-e", "ip.dst",
-				"-e", "_ws.col.Protocol", "-e", "frame.len", "-e", "_ws.col.Info",
-				"-e", "eth.src", "-e", "eth.dst", "-e", "arp.src.proto_ipv4", "-e", "arp.dst.proto_ipv4")
+		args := []string{"-r", absFilePath, "-T", "fields",
+			"-e", "frame.number", "-e", "frame.time", "-e", "ip.src", "-e", "ip.dst",
+			"-e", "_ws.col.Protocol", "-e", "frame.len", "-e", "_ws.col.Info",
+			"-e", "eth.src", "-e", "eth.dst", "-e", "arp.src.proto_ipv4", "-e", "arp.dst.proto_ipv4"}
+
+		if maxOption != "" {
+			args = append([]string{"-r", absFilePath, maxOption}, args[2:]...)
 		}
+
+		if filterExpression != "" {
+			args = append(args, "-Y", filterExpression)
+		}
+
+		cmd = exec.Command(tsharkPath, args...)
 	} else {
-		// Linux等で従来の"sh -c"呼び出し
 		baseCmd := fmt.Sprintf("tshark -r %s %s -T fields -e frame.number -e frame.time -e ip.src -e ip.dst "+
 			"-e _ws.col.Protocol -e frame.len -e _ws.col.Info -e eth.src -e eth.dst "+
 			"-e arp.src.proto_ipv4 -e arp.dst.proto_ipv4", g.FilePath, maxOption)
@@ -201,14 +228,20 @@ func (g *TsharkInfoGetter) GetPacketInfo() ([]*models.Packet, error) {
 	}
 
 	// コマンド実行
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput() // StdoutとStderrの両方を取得
 	if err != nil {
+		if g.DebugMode {
+			fmt.Printf("tshark出力: %s\n", string(output))
+		}
 		return nil, fmt.Errorf("tshark実行エラー: %v", err)
 	}
 
 	// 出力結果をパースしてパケット情報を構築
 	packets := []*models.Packet{}
 	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+
+	// パケット番号のリストを保持
+	packetNumbers := []string{}
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -256,6 +289,9 @@ func (g *TsharkInfoGetter) GetPacketInfo() ([]*models.Packet, error) {
 			destination = "no_destination" // 空用のプレースホルダー
 		}
 
+		// パケット番号を保存
+		packetNumbers = append(packetNumbers, number)
+
 		// パケット情報の生成
 		packet := models.NewPacket(
 			number,
@@ -274,36 +310,182 @@ func (g *TsharkInfoGetter) GetPacketInfo() ([]*models.Packet, error) {
 		}
 	}
 
+	// 詳細情報を一括で取得し、メモリに格納（初期化がまだの場合）
+	if !g.initialized && len(packets) > 0 {
+		if g.DebugMode {
+			fmt.Printf("詳細情報のプリロードを開始します（パケット数: %d）\n", len(packetNumbers))
+		}
+
+		// パケット詳細情報を取得する
+		err = g.preloadPacketDetails(packetNumbers, tsharkPath)
+		if err != nil {
+			if g.DebugMode {
+				fmt.Printf("詳細情報のプリロードに失敗: %v\n", err)
+			}
+		} else {
+			if g.DebugMode {
+				fmt.Printf("詳細情報のプリロード完了: %d パケットの詳細をキャッシュしました\n", len(g.packetDetails))
+			}
+			g.initialized = true
+		}
+	}
+
 	return packets, nil
+}
+
+// 詳細情報を一括でプリロードする
+func (g *TsharkInfoGetter) preloadPacketDetails(packetNumbers []string, tsharkPath string) error {
+	// パケット番号をフィルタとして結合
+	if len(packetNumbers) == 0 {
+		return nil
+	}
+
+	// Linuxでは特に大量のパケットを一度に処理できない可能性があるため、バッチサイズを小さく設定
+	batchSize := 20
+	if runtime.GOOS == "windows" || runtime.GOOS == "MacOS" {
+		batchSize = 100
+	}
+
+	totalBatches := (len(packetNumbers) + batchSize - 1) / batchSize
+
+	if g.DebugMode {
+		fmt.Printf("詳細情報のプリロード: %d パケットを %d バッチに分割します\n", len(packetNumbers), totalBatches)
+	}
+
+	for i := 0; i < totalBatches; i++ {
+		start := i * batchSize
+		end := (i + 1) * batchSize
+		if end > len(packetNumbers) {
+			end = len(packetNumbers)
+		}
+
+		batchNumbers := packetNumbers[start:end]
+		frameFilters := make([]string, len(batchNumbers))
+		for j, num := range batchNumbers {
+			frameFilters[j] = fmt.Sprintf("frame.number==%s", num)
+		}
+
+		filterExpression := strings.Join(frameFilters, " or ")
+
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" || runtime.GOOS == "MacOS" {
+			cmd = exec.Command(tsharkPath, "-r", g.FilePath, "-Y", filterExpression, "-V")
+		} else {
+			// Linuxの場合、コマンドを慎重に構築
+			cmdStr := fmt.Sprintf("%s -r %s -Y \"%s\" -V", tsharkPath, g.FilePath, filterExpression)
+			cmd = exec.Command("sh", "-c", cmdStr)
+		}
+
+		if g.DebugMode {
+			fmt.Printf("プリロードバッチ %d/%d: パケット %d-%d のプリロードを実行\n",
+				i+1, totalBatches, start+1, end)
+			fmt.Printf("コマンド: %s\n", cmd.String())
+		}
+
+		output, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("プリロード実行エラー (バッチ %d/%d): %v", i+1, totalBatches, err)
+		}
+
+		// 出力を各パケットごとに分割して保存
+		countBefore := len(g.packetDetails)
+		g.parsePacketDetails(string(output))
+		countAfter := len(g.packetDetails)
+
+		if g.DebugMode {
+			fmt.Printf("バッチ %d/%d 完了: キャッシュに %d パケットを追加 (合計: %d)\n",
+				i+1, totalBatches, countAfter-countBefore, countAfter)
+		}
+		fmt.Printf("詳細情報のプリロード進捗: %d/%d バッチ完了\n", i+1, totalBatches)
+	}
+
+	return nil
+}
+
+// parsePacketDetails は出力を各パケットごとに分割して保存するヘルパーメソッド
+func (g *TsharkInfoGetter) parsePacketDetails(output string) {
+	// "Frame X: " をセパレータとしてパケットを分割
+	frameRegex := regexp.MustCompile(`Frame (\d+):`)
+	matches := frameRegex.FindAllStringSubmatchIndex(output, -1)
+
+	if len(matches) == 0 {
+		if g.DebugMode {
+			fmt.Println("警告: 詳細出力からパケットフレーム情報を検出できませんでした")
+			if len(output) > 100 {
+				fmt.Printf("出力サンプル: %s...\n", output[:100])
+			} else if len(output) > 0 {
+				fmt.Printf("出力サンプル: %s\n", output)
+			}
+		}
+		return
+	}
+
+	for i := 0; i < len(matches); i++ {
+		start := matches[i][0]
+		end := len(output)
+		if i < len(matches)-1 {
+			end = matches[i+1][0]
+		}
+
+		frameSection := output[start:end]
+		frameMatch := frameRegex.FindStringSubmatch(frameSection)
+		if len(frameMatch) > 1 {
+			frameNumber := frameMatch[1]
+			g.packetDetails[frameNumber] = frameSection
+			if g.DebugMode && i == 0 {
+				fmt.Printf("パケット %s の詳細情報をキャッシュに保存しました\n", frameNumber)
+			}
+		}
+	}
 }
 
 // GetDetailedInfo はプロトコル別の詳細情報を取得する
 func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
-	// プロトコル名に応じたtsharkフィルタを構築
-	filter := fmt.Sprintf("frame.number==%s", packet.Number)
-	tsharkPath := readTsharkPath()
-
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" || runtime.GOOS == "MacOS" {
-		// WindowsまたはMacOSの場合、直接コマンドを実行
-		cmd = exec.Command(tsharkPath, "-r", g.FilePath, "-Y", filter, "-V")
-	} else {
-		// Linux等では従来の"sh -c"呼び出し
-		cmd = exec.Command("sh", "-c", fmt.Sprintf("%s -r %s -Y '%s' -V", tsharkPath, g.FilePath, filter))
-	}
+	var detailOutput string
 
 	if g.DebugMode {
-		fmt.Println("詳細情報取得コマンド:", cmd.String())
+		fmt.Printf("パケット %s/%s (%s) の詳細情報を取得中...\n",
+			packet.Number, packet.Protocol, packet.Protocol)
 	}
 
-	// コマンド実行
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("詳細情報取得エラー: %v", err)
+	// メモリにキャッシュされた詳細情報を確認
+	if details, exists := g.packetDetails[packet.Number]; exists {
+		if g.DebugMode {
+			fmt.Printf("パケット %s の詳細情報はキャッシュから取得しました\n", packet.Number)
+		}
+		detailOutput = details
+	} else {
+		// キャッシュにない場合のみ個別にtsharkを実行
+		if g.DebugMode {
+			fmt.Printf("警告: パケット %s の詳細情報がキャッシュにありません。個別に取得します。\n", packet.Number)
+		}
+
+		filter := fmt.Sprintf("frame.number==%s", packet.Number)
+		tsharkPath := readTsharkPath()
+
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" || runtime.GOOS == "MacOS" {
+			cmd = exec.Command(tsharkPath, "-r", g.FilePath, "-Y", filter, "-V")
+		} else {
+			cmd = exec.Command("sh", "-c", fmt.Sprintf("%s -r %s -Y '%s' -V", tsharkPath, g.FilePath, filter))
+		}
+
+		if g.DebugMode {
+			fmt.Println("詳細情報個別取得コマンド:", cmd.String())
+		}
+
+		output, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("詳細情報取得エラー: %v", err)
+		}
+		detailOutput = string(output)
+
+		// 今後の使用のためにキャッシュに保存
+		g.packetDetails[packet.Number] = detailOutput
 	}
 
 	// 出力結果から必要な情報を抽出
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	scanner := bufio.NewScanner(strings.NewReader(detailOutput))
 	protocolSection := false
 
 	for scanner.Scan() {
@@ -332,7 +514,7 @@ func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 		dstMACRe := regexp.MustCompile(`Target MAC address: ([0-9A-Fa-f:]+)`)
 
 		// 出力結果を再度スキャンして送信元と宛先のアドレスを探す
-		scanner = bufio.NewScanner(strings.NewReader(string(output)))
+		scanner = bufio.NewScanner(strings.NewReader(detailOutput))
 		for scanner.Scan() {
 			line := scanner.Text()
 			line = strings.TrimSpace(line)

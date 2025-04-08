@@ -1,0 +1,63 @@
+// Package packet provides a simple implementation of the Packet interface
+package packet
+
+import (
+	"fmt"
+)
+
+// SimplePacket is a basic implementation of the protocol_analyzer.Packet interface
+type SimplePacket struct {
+	Layers map[string]map[string]interface{}
+}
+
+// NewSimplePacket creates a new SimplePacket
+func NewSimplePacket() *SimplePacket {
+	return &SimplePacket{
+		Layers: make(map[string]map[string]interface{}),
+	}
+}
+
+// AddLayer adds a layer to the packet
+func (p *SimplePacket) AddLayer(layerType string, fields map[string]interface{}) {
+	p.Layers[layerType] = fields
+}
+
+// Layer returns the specified layer or nil if not present
+func (p *SimplePacket) Layer(layerType string) interface{} {
+	layer, exists := p.Layers[layerType]
+	if !exists {
+		return nil
+	}
+	return layer
+}
+
+// LayerExists checks if a specific layer exists in the packet
+func (p *SimplePacket) LayerExists(layerType string) bool {
+	_, exists := p.Layers[layerType]
+	return exists
+}
+
+// GetField returns a field value from a layer
+func (p *SimplePacket) GetField(layer string, field string) (interface{}, bool) {
+	layerMap, exists := p.Layers[layer]
+	if !exists {
+		return nil, false
+	}
+	
+	value, exists := layerMap[field]
+	return value, exists
+}
+
+// String provides a string representation of the packet
+func (p *SimplePacket) String() string {
+	result := "SimplePacket{\n"
+	for layerName, fields := range p.Layers {
+		result += fmt.Sprintf("  %s: {\n", layerName)
+		for field, value := range fields {
+			result += fmt.Sprintf("    %s: %v\n", field, value)
+		}
+		result += "  }\n"
+	}
+	result += "}"
+	return result
+}

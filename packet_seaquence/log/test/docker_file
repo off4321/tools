@@ -1,0 +1,20 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 必要なパッケージのインストール（Python3, pip, tshark など）
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    tshark \
+    scapy \
+ && rm -rf /var/lib/apt/lists/*
+
+# 作業ディレクトリを設定
+WORKDIR /app
+
+# 必要な Python パッケージをインストール
+RUN pip3 install --no-cache-dir pyshark nest_asyncio
+
+# エントリーポイント
+CMD [ "/bin/bash" ]
