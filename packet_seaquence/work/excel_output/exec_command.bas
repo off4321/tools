@@ -20,6 +20,7 @@ Sub GenerateMermaidSequence()
     Dim ipFlag As String: ipFlag = Range("D9").Value
     Dim startT As String: startT = Range("D10").Value
     Dim endT As String: endT = Range("D11").Value
+    Dim debugFlag As String: debugFlag = Range("D12").Value
     
 
     cmd = """" & exePath & """"
@@ -32,6 +33,7 @@ Sub GenerateMermaidSequence()
     If ipFlag <> "" Then cmd = cmd & " -IP """ & ipFlag & """"
     If startT <> "" Then cmd = cmd & " -startTime """ & startT & """"
     If endT <> "" Then cmd = cmd & " -endTime """ & endT & """"
+    If debugFlag = "1" Then cmd = cmd & " -debug"
     
     Dim wsh As Object
     Set wsh = CreateObject("WScript.Shell")
@@ -73,14 +75,48 @@ Sub CreateInfoSheet()
     ' ラベルの追加
     ws.Range("C3").Value = "対象ファイル名:"
     ws.Range("C4").Value = "出力ファイル名:"
-    ws.Range("C5").Value = "最大パケット数:"
+    ws.Range("C5").Value = "最大パケット数(全数なら何も入力しないでください):"
     ws.Range("C6").Value = "送信元IP(aaa.bbb.ccc.ddd):"
     ws.Range("C7").Value = "送信先IP(aaa.bbb.ccc.ddd):"
     ws.Range("C8").Value = "フィルタプロトコル名(例.DNS):"
     ws.Range("C9").Value = "送信元または送信先IP(aaa.bbb.ccc.ddd):"
     ws.Range("C10").Value = "フィルタ適用開始時刻(yyyy-mm-dd hh:mm:ss):"
     ws.Range("C11").Value = "フィルタ適用終了時刻(yyyy-mm-dd hh:mm:ss):"
+    ws.Range("C12").Value = "デバッグモード(1:有効 0:無効):"
+
+    ' 注意事項の追加
+    ws.Range("C15").Value = "注意事項:"
+    ws.Range("C16").Value = "このシートを使用する前に、必要な設定を確認してください。"
+    ws.Range("C17").Value = "1. 対象ファイル名には、パケットキャプチャファイルのパスを指定してください。"
+    ws.Range("C18").Value = "2. 出力ファイル名には、出力先のパスを指定してください。"
+    ws.Range("C19").Value = "3. 最大パケット数は、必要に応じて指定してください。"
+    ws.Range("C20").Value = "4. 送信元IPと送信先IPは、フィルタリングに使用されます。"
+    ws.Range("C21").Value = "5. フィルタ適用時刻は、yyyy-mm-dd hh:mm:ss形式で指定してください。"
+    ws.Range("C22").Value = "6. フィルタ適用終了時刻は、yyyy-mm-dd hh:mm:ss形式で指定してください。"
+    ws.Range("C23").Value = "7. デバッグモードを有効にすると、詳細なログが生成されます。"
+    ws.Range("C24").Value = "8. 設定が完了したら、実行ボタンを押してください。"
+    ws.Range("C25").Value = "9. 出力ファイルは、指定したフォルダに保存されます。"
+    ws.Range("C26").Value = "10. フィルタリング結果は、Mermaid形式で出力されます。"
+    ws.Range("C27").Value = "11. マーメイド変換ボタンを押すことで、新しいシートが作成されシーケンスが作成されます。"
+
+    ws.Range("C29").Value = "ファイル構成"
+    ws.Range("C30").Value = "│ packet_sequence.exe"
+    ws.Range("C31").Value = "├─execel_output"
+    ws.Range("C32").Value = "│  ├─exec_command.bas"
+    ws.Range("C33").Value = "│  ├─convert_mermaid.bas"
+    ws.Range("C34").Value = "│  └─mermaid_output.xlsm(本ファイル)"
+    ws.Range("C35").Value = "└config"
+    ws.Range("C36").Value = "   └─config.pkseq"
+
+    ws.Range("C38").Value = "基本的に大量にあるパケットファイルのシーケンスを作ることは試していないため、"
+    ws.Range("C39").Value = "各フィルタ設定を行うことを推奨します。"
+    ws.Range("C40").Value = "詳細な情報はwiresharkなどを使用して確認してください。"
+
+    ws.Range("C42").Value = "各ページが消えた場合は、マクロからAuto_Openを実行してください。"
     
+    ws.Range("C3:D12").Interior.Color = RGB(255, 255, 204) ' ラベルの背景色を変更
+    ws.Range("C15:D42").Interior.Color = RGB(204, 255, 204) ' 注意事項の背景色を変更 - 正しいrange指定に修正
+
     ' ファイル参照ボタンの追加
     Dim btnFileRef As Shape
     Set btnFileRef = ws.Shapes.AddFormControl(xlButtonControl, Range("E3").Left, Range("E3").Top, Range("E3").Width, Range("E3").Height) ' 位置調整
@@ -94,6 +130,14 @@ Sub CreateInfoSheet()
     btnFolderRef.Name = "btnFolderRef"
     btnFolderRef.TextFrame.Characters.Text = "フォルダ参照"
     btnFolderRef.OnAction = "BrowseFolder"
+
+    ' セル D12 のデータ検証設定：0か1のみ選択可能
+    With ws.Range("D12").Validation
+        .Delete
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:=xlBetween, Formula1:="0,1"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+End With
     
     ' 実行ボタンの追加
     AddRunButton
@@ -137,5 +181,6 @@ End Sub
 
 Sub Auto_Open()
     CreateInfoSheet
+    AddMermaidConversionButton ' マーメイド変換ボタンを追加
 End Sub
 
