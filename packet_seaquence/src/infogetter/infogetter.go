@@ -73,10 +73,18 @@ func NewTsharkInfoGetter(filePath string, debugMode bool, maxPackets int, source
 func readTsharkPath() string {
 	if runtime.GOOS == "windows" || runtime.GOOS == "MacOS" {
 		// 設定ファイルから読み込み
-		path := "config/config.pkseq"
-		file, err := os.Open(path)
+		execPath, err := os.Executable()
 		if err != nil {
-			fmt.Printf("設定ファイル %s が開けません: %v\n", path, err)
+			fmt.Printf("実行ファイルのパスを取得できません: %v\n", err)
+			return "tshark" // デフォルトのtsharkを返す
+		}
+		execDir := filepath.Dir(execPath)
+		configPath := filepath.Join(execDir, "config", "config.pkseq")
+		currentDir, _ := os.Getwd()
+		fmt.Printf("カレントディレクトリ: %s\n", currentDir)
+		file, err := os.Open(configPath)
+		if err != nil {
+			fmt.Printf("設定ファイル %s が開けません: %v\n", configPath, err)
 			fmt.Println("tsharkが見つかりません。設定ファイルを確認してください。")
 			return "tshark" // 設定がなくても"tshark"を返す
 		}
@@ -107,11 +115,11 @@ func readTsharkPath() string {
 				newPath := currentPath + ";" + tsharkDir
 				os.Setenv("PATH", newPath)
 
-				fmt.Println("-----------------------------------------------")
-				fmt.Println("tsharkをPATHに追加しました")
-				fmt.Println("コマンドプロンプトで実行する場合は以下のように入力できます：")
-				fmt.Printf("SET PATH=%%PATH%%;%s\n", tsharkDir)
-				fmt.Println("-----------------------------------------------")
+				//fmt.Println("-----------------------------------------------")
+				//fmt.Println("tsharkをPATHに追加しました")
+				//fmt.Println("コマンドプロンプトで実行する場合は以下のように入力できます：")
+				//fmt.Printf("SET PATH=%%PATH%%;%s\n", tsharkDir)
+				//fmt.Println("-----------------------------------------------")
 
 				// tsharkコマンドを返す
 				return "tshark"
