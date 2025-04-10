@@ -66,3 +66,9 @@ MIT License
 
 # 著者
 Junnosuke Horiuchi
+
+# バイナリmd5sum値
+|バイナリ名|md5sum|
+|---|---|
+|packet_sequence|`dbd3172c3b0d37b16f229a3b9b54f07f`|
+|packet_sequence.exe|`b6187896f1fa263f7bd9bcc388a6a8a7`|
