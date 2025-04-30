@@ -35,23 +35,29 @@ type TsharkInfoGetter struct {
 	EndTime       string
 	packetDetails map[string]string // パケット番号をキーとした詳細情報のマップ
 	initialized   bool              // 初期化フラグ
+	InfoAll       bool              // 追加: 全詳細出力フラグ
+
+	// パケット関連付け用のマップ
+	dnsTransactions map[string]string // DNSトランザクションID→パケット番号のマップ
 }
 
 // NewTsharkInfoGetter は新しいTsharkInfoGetterを生成する
-func NewTsharkInfoGetter(filePath string, debugMode bool, maxPackets int, sourceIP, destinationIP, protocolName, ipFlag, startTime, endTime string) *TsharkInfoGetter {
+func NewTsharkInfoGetter(filePath string, debugMode bool, maxPackets int, sourceIP, destinationIP, protocolName, ipFlag, startTime, endTime string, infoAll bool) *TsharkInfoGetter {
 	getter := &TsharkInfoGetter{
-		FilePath:      filePath,
-		DebugMode:     debugMode,
-		MaxPackets:    maxPackets,
-		analyzers:     make(map[string]protocol.Analyzer),
-		SourceIP:      sourceIP,
-		DestinationIP: destinationIP,
-		ProtocolName:  protocolName,
-		IPFlag:        ipFlag,
-		StartTime:     startTime,
-		EndTime:       endTime,
-		packetDetails: make(map[string]string),
-		initialized:   false,
+		FilePath:        filePath,
+		DebugMode:       debugMode,
+		MaxPackets:      maxPackets,
+		analyzers:       make(map[string]protocol.Analyzer),
+		SourceIP:        sourceIP,
+		DestinationIP:   destinationIP,
+		ProtocolName:    protocolName,
+		IPFlag:          ipFlag,
+		StartTime:       startTime,
+		EndTime:         endTime,
+		packetDetails:   make(map[string]string),
+		initialized:     false,
+		InfoAll:         infoAll,
+		dnsTransactions: make(map[string]string), // DNSトランザクションマップの初期化
 	}
 
 	// 各プロトコルのアナライザーを初期化
@@ -351,7 +357,7 @@ func (g *TsharkInfoGetter) preloadPacketDetails(packetNumbers []string, tsharkPa
 	// Linuxでは特に大量のパケットを一度に処理できない可能性があるため、バッチサイズを小さく設定
 	batchSize := 20
 	if runtime.GOOS == "windows" || runtime.GOOS == "MacOS" {
-		batchSize = 100
+		batchSize = 1000 // 100から1000に増やした！
 	}
 
 	totalBatches := (len(packetNumbers) + batchSize - 1) / batchSize
@@ -450,6 +456,7 @@ func (g *TsharkInfoGetter) parsePacketDetails(output string) {
 // GetDetailedInfo はプロトコル別の詳細情報を取得する
 func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 	var detailOutput string
+	var rawDetails []string // 元の詳細情報を保存する変数
 
 	if g.DebugMode {
 		fmt.Printf("パケット %s/%s (%s) の詳細情報を取得中...\n",
@@ -492,9 +499,22 @@ func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 		g.packetDetails[packet.Number] = detailOutput
 	}
 
-	// 出力結果から必要な情報を抽出
+	// 生のtshark出力を行ごとに分割
+	lines := strings.Split(detailOutput, "\n")
+	for _, line := range lines {
+		cleanLine := strings.TrimRight(line, "\r\n")
+		if cleanLine != "" {
+			rawDetails = append(rawDetails, cleanLine)
+		}
+	}
+
+	// InfoAllモードでもパケット解析は実行する（関連付けのため）
+	// ただし、パケット詳細はrawDetailsを使う
+	
+	// 出力結果から必要な情報を抽出（通常モード用）
 	scanner := bufio.NewScanner(strings.NewReader(detailOutput))
 	protocolSection := false
+	var normalDetails []string // 通常モード用の抽出詳細
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -510,7 +530,7 @@ func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 			// 詳細情報を追加（余分な空白を削除）
 			re := regexp.MustCompile(`\s{2,}`)
 			cleanLine := re.ReplaceAllString(line, " ")
-			packet.AddDetail(cleanLine)
+			normalDetails = append(normalDetails, cleanLine)
 		}
 	}
 
@@ -557,31 +577,97 @@ func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 		}
 	}
 
+	// 解析のためにパケット詳細を一時的に設定
+	// これはanalyzerが詳細を参照するため必要
+	packet.Details = normalDetails
+
 	// 対応するプロトコルアナライザーを取得
 	analyzer, exists := g.analyzers[packet.Protocol]
 	if !exists {
-		if g.DebugMode {
-			fmt.Printf("プロトコル %s のアナライザーがありません\n", packet.Protocol)
+		// アナライザーが存在しない場合はここで終了
+		if g.InfoAll {
+			// InfoAllモードの場合は生のtshark出力を使用
+			packet.Details = rawDetails
 		}
 		return nil
 	}
 
-	// アナライザーを使用して詳細情報を解析
+	// アナライザーを使用して詳細情報を解析（IDs抽出と関連付けも行う）
 	details, err := analyzer.Analyze(packet)
 	if err != nil {
 		if g.DebugMode {
 			fmt.Printf("プロトコル %s の解析エラー: %v\n", packet.Protocol, err)
 		}
+		
+		// エラーの場合もInfoAllモードなら生の出力を使用
+		if g.InfoAll {
+			packet.Details = rawDetails
+		}
 		return nil
 	}
 
-	// パケットの詳細情報をクリアして解析結果で置き換え
-	packet.Details = details
+	// DNSプロトコルのリクエスト/レスポンスを関連付け
+	if packet.Protocol == "DNS" {
+		// トランザクションIDを取得
+		transactionID, hasTransactionID := packet.RelatedPackets["dns_transaction_id"]
+		if hasTransactionID {
+			isResponse := strings.Contains(packet.Info, "response")
+			
+			if isResponse {
+				// レスポンスパケットの場合、対応するクエリパケットを探す
+				if requestPacketNum, exists := g.dnsTransactions[transactionID]; exists {
+					// レスポンスパケットに、対応するリクエストパケット番号を関連付け
+					packet.RelatedPackets["request"] = requestPacketNum
+					if g.DebugMode {
+						fmt.Printf("DNSレスポンス(パケット %s)を対応するリクエスト(パケット %s)に関連付けました\n", 
+							packet.Number, requestPacketNum)
+					}
+					
+					// 詳細情報に関連パケット情報を追加するのは通常モードのみ
+					if !g.InfoAll {
+						foundIndex := -1
+						for i, detail := range details {
+							if strings.HasPrefix(detail, "Transaction ID:") {
+								foundIndex = i
+								break
+							}
+						}
+						
+						if foundIndex >= 0 {
+							// 既存のTransaction IDの行を拡張
+							details[foundIndex] = fmt.Sprintf("%s (対応リクエスト: パケット %s)", 
+								details[foundIndex], requestPacketNum)
+						} else {
+							// 新しい行を追加
+							details = append(details, 
+								fmt.Sprintf("対応リクエスト: パケット %s", requestPacketNum))
+						}
+					}
+				}
+			} else {
+				// クエリパケットの場合、トランザクションIDをマップに登録
+				g.dnsTransactions[transactionID] = packet.Number
+				if g.DebugMode {
+					fmt.Printf("DNSクエリ(パケット %s)のトランザクションID %s を記録\n", 
+						packet.Number, transactionID)
+				}
+			}
+		}
+	}
 
-	if g.DebugMode {
-		fmt.Printf("パケット %s (%s) の詳細情報:\n", packet.Number, packet.Protocol)
-		for _, detail := range details {
-			fmt.Printf("  - %s\n", detail)
+	// InfoAllモードの場合は元の詳細情報を使用、それ以外は解析結果を使用
+	if g.InfoAll {
+		packet.Details = rawDetails
+		if g.DebugMode {
+			fmt.Printf("[InfoAll] パケット %s の詳細を全行格納 (行数: %d)\n", packet.Number, len(packet.Details))
+		}
+	} else {
+		packet.Details = details
+		if g.DebugMode {
+			fmt.Printf("パケット %s (%s) の詳細情報:\n", packet.Number, packet.Protocol)
+			for _, detail := range details {
+				fmt.Printf("  - %s\n", detail)
+			}
 		}
 	}
 
