@@ -35,6 +35,7 @@ cd packet_seaquence
 - `-startTime <時刻>`: フィルタリング開始時刻（例: 2023-10-01 12:00:00）
 - `-endTime <時刻>`: フィルタリング終了時刻（例: 2023-10-01 12:00:00）
 - `-version`: バージョン情報の表示
+- `-info all`: tsharkの_ws.col.Infoフィールドを表示
 
 ## 使用例
 1. 基本的な使用方法：
@@ -70,5 +71,5 @@ Junnosuke Horiuchi
 # バイナリmd5sum値
 |バイナリ名|md5sum|
 |---|---|
-|packet_sequence|`dbd3172c3b0d37b16f229a3b9b54f07f`|
-|packet_sequence.exe|`b6187896f1fa263f7bd9bcc388a6a8a7`|
+|packet_sequence|`99f248d2604b0f51f75f6acc717c9491`|
+|packet_sequence.exe|`e3a6c761be8d14f9ba6e6ef3064991af `|

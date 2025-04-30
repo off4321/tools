@@ -54,8 +54,8 @@ func main() {
 
 	// バージョン情報の表示
 	if *version {
-		fmt.Println("Packet Sequence Analyzer v0.0.1")
-		fmt.Println("created by Junnosuke Horiuchi 2025-04-06")
+		fmt.Println("Packet Sequence Analyzer v0.0.2")
+		fmt.Println("created by Junnosuke Horiuchi 2025-05-01")
 		fmt.Println("Github URL:https://github.com/off4321/tools/tree/main/packet_seaquence")
 		fmt.Println("License: MIT")
 		fmt.Println("Copyright (c) 2023 Junnosuke Horiuchi")
@@ -89,13 +89,13 @@ func main() {
 
 	// 2. tsharkを使ってpcapファイルの情報取得
 	fmt.Println("ステップ2: パケット情報の取得...")
-	
+
 	// infoArgが "all" のときだけInfoAllをtrueにする
 	infoAll := *infoArg == "all"
 	if infoAll && *debugMode {
 		fmt.Println("全詳細情報表示モード: 有効")
 	}
-	
+
 	infoGetter := infogetter.NewTsharkInfoGetter(
 		*filePath,
 		*debugMode,
@@ -170,7 +170,7 @@ func getPacketDetails(infoGetter infogetter.InfoGetter, packets []*models.Packet
 			// デバッグモードでなければ1000パケットごと、または最後のパケットのみ進捗を表示
 			fmt.Printf("パケット処理進捗: %d/%d\n", i+1, len(packets))
 		}
-		
+
 		err := infoGetter.GetDetailedInfo(packet)
 		if err != nil {
 			// 詳細情報の取得に失敗した場合はエラーメッセージを表示

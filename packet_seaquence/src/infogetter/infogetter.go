@@ -456,7 +456,6 @@ func (g *TsharkInfoGetter) parsePacketDetails(output string) {
 // GetDetailedInfo はプロトコル別の詳細情報を取得する
 func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 	var detailOutput string
-	var rawDetails []string // 元の詳細情報を保存する変数
 
 	if g.DebugMode {
 		fmt.Printf("パケット %s/%s (%s) の詳細情報を取得中...\n",
@@ -499,18 +498,8 @@ func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 		g.packetDetails[packet.Number] = detailOutput
 	}
 
-	// 生のtshark出力を行ごとに分割
-	lines := strings.Split(detailOutput, "\n")
-	for _, line := range lines {
-		cleanLine := strings.TrimRight(line, "\r\n")
-		if cleanLine != "" {
-			rawDetails = append(rawDetails, cleanLine)
-		}
-	}
-
 	// InfoAllモードでもパケット解析は実行する（関連付けのため）
-	// ただし、パケット詳細はrawDetailsを使う
-	
+
 	// 出力結果から必要な情報を抽出（通常モード用）
 	scanner := bufio.NewScanner(strings.NewReader(detailOutput))
 	protocolSection := false
@@ -586,8 +575,8 @@ func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 	if !exists {
 		// アナライザーが存在しない場合はここで終了
 		if g.InfoAll {
-			// InfoAllモードの場合は生のtshark出力を使用
-			packet.Details = rawDetails
+			// InfoAllモードの場合は_ws.col.Infoを使用
+			packet.Details = []string{packet.Info}
 		}
 		return nil
 	}
@@ -598,10 +587,10 @@ func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 		if g.DebugMode {
 			fmt.Printf("プロトコル %s の解析エラー: %v\n", packet.Protocol, err)
 		}
-		
-		// エラーの場合もInfoAllモードなら生の出力を使用
+
+		// エラーの場合もInfoAllモードなら_ws.col.Infoを使用
 		if g.InfoAll {
-			packet.Details = rawDetails
+			packet.Details = []string{packet.Info}
 		}
 		return nil
 	}
@@ -612,17 +601,17 @@ func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 		transactionID, hasTransactionID := packet.RelatedPackets["dns_transaction_id"]
 		if hasTransactionID {
 			isResponse := strings.Contains(packet.Info, "response")
-			
+
 			if isResponse {
 				// レスポンスパケットの場合、対応するクエリパケットを探す
 				if requestPacketNum, exists := g.dnsTransactions[transactionID]; exists {
 					// レスポンスパケットに、対応するリクエストパケット番号を関連付け
 					packet.RelatedPackets["request"] = requestPacketNum
 					if g.DebugMode {
-						fmt.Printf("DNSレスポンス(パケット %s)を対応するリクエスト(パケット %s)に関連付けました\n", 
+						fmt.Printf("DNSレスポンス(パケット %s)を対応するリクエスト(パケット %s)に関連付けました\n",
 							packet.Number, requestPacketNum)
 					}
-					
+
 					// 詳細情報に関連パケット情報を追加するのは通常モードのみ
 					if !g.InfoAll {
 						foundIndex := -1
@@ -632,14 +621,14 @@ func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 								break
 							}
 						}
-						
+
 						if foundIndex >= 0 {
 							// 既存のTransaction IDの行を拡張
-							details[foundIndex] = fmt.Sprintf("%s (対応リクエスト: パケット %s)", 
+							details[foundIndex] = fmt.Sprintf("%s (対応リクエスト: パケット %s)",
 								details[foundIndex], requestPacketNum)
 						} else {
 							// 新しい行を追加
-							details = append(details, 
+							details = append(details,
 								fmt.Sprintf("対応リクエスト: パケット %s", requestPacketNum))
 						}
 					}
@@ -648,18 +637,18 @@ func (g *TsharkInfoGetter) GetDetailedInfo(packet *models.Packet) error {
 				// クエリパケットの場合、トランザクションIDをマップに登録
 				g.dnsTransactions[transactionID] = packet.Number
 				if g.DebugMode {
-					fmt.Printf("DNSクエリ(パケット %s)のトランザクションID %s を記録\n", 
+					fmt.Printf("DNSクエリ(パケット %s)のトランザクションID %s を記録\n",
 						packet.Number, transactionID)
 				}
 			}
 		}
 	}
 
-	// InfoAllモードの場合は元の詳細情報を使用、それ以外は解析結果を使用
+	// InfoAllモードの場合は_ws.col.Infoを使用、それ以外は解析結果を使用
 	if g.InfoAll {
-		packet.Details = rawDetails
+		packet.Details = []string{packet.Info}
 		if g.DebugMode {
-			fmt.Printf("[InfoAll] パケット %s の詳細を全行格納 (行数: %d)\n", packet.Number, len(packet.Details))
+			fmt.Printf("[InfoAll] パケット %s の詳細を _ws.col.Info の内容に設定: %s\n", packet.Number, packet.Info)
 		}
 	} else {
 		packet.Details = details

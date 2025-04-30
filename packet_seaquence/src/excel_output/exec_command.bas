@@ -21,6 +21,7 @@ Sub GenerateMermaidSequence()
     Dim startT As String: startT = Range("D10").Value
     Dim endT As String: endT = Range("D11").Value
     Dim debugFlag As String: debugFlag = Range("D12").Value
+    Dim infoFlag As String: infoFlag = Range("D13").Value
     
 
     cmd = """" & exePath & """"
@@ -34,6 +35,7 @@ Sub GenerateMermaidSequence()
     If startT <> "" Then cmd = cmd & " -startTime """ & startT & """"
     If endT <> "" Then cmd = cmd & " -endTime """ & endT & """"
     If debugFlag = "1" Then cmd = cmd & " -debug"
+    If infoFlag = "1" Then cmd = cmd & " -info all"
     
     Dim wsh As Object
     Set wsh = CreateObject("WScript.Shell")
@@ -83,6 +85,7 @@ Sub CreateInfoSheet()
     ws.Range("C10").Value = "フィルタ適用開始時刻(yyyy-mm-dd hh:mm:ss):"
     ws.Range("C11").Value = "フィルタ適用終了時刻(yyyy-mm-dd hh:mm:ss):"
     ws.Range("C12").Value = "デバッグモード(1:有効 0:無効):"
+    ws.Range("C13").Value = "各パケットの情報表示(1:有効 0:無効):"
 
     ' 注意事項の追加
     ws.Range("C15").Value = "注意事項:"
@@ -114,7 +117,7 @@ Sub CreateInfoSheet()
 
     ws.Range("C42").Value = "各ページが消えた場合は、マクロからAuto_Openを実行してください。"
     
-    ws.Range("C3:D12").Interior.Color = RGB(255, 255, 204) ' ラベルの背景色を変更
+    ws.Range("C3:D13").Interior.Color = RGB(255, 255, 204) ' ラベルの背景色を変更
     ws.Range("C15:D42").Interior.Color = RGB(204, 255, 204) ' 注意事項の背景色を変更 - 正しいrange指定に修正
 
     ' ファイル参照ボタンの追加
@@ -139,6 +142,13 @@ Sub CreateInfoSheet()
         .InCellDropdown = True
 End With
     
+   ' セル D13 のデータ検証設定：0か1のみ選択可能
+    With ws.Range("D13").Validation
+        .Delete
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:=xlBetween, Formula1:="0,1"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+End With
     ' 実行ボタンの追加
     AddRunButton
 End Sub
