@@ -26,6 +26,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "  パケット解析: packet_seaquence -file=capture.pcap -out=result.md")
 		fmt.Fprintln(os.Stderr, "  特定IPのみ解析: packet_seaquence -file=capture.pcap -IP=192.168.1.1")
 		fmt.Fprintln(os.Stderr, "  詳細モード: packet_seaquence -file=capture.pcap -debug=true")
+		fmt.Fprintln(os.Stderr, "  全詳細情報表示: packet_seaquence -file=capture.pcap -info=all")
 	}
 
 	// コマンドライン引数の解析
@@ -39,6 +40,7 @@ func main() {
 	ipFlag := flag.String("IP", "", "送信元または送信先IPをフィルタリングする(例: 123.456.789.012)")
 	startTimeArg := flag.String("startTime", "", "フィルタ適用開始時刻(例: 2023-10-01 12:00:00)")
 	endTimeArg := flag.String("endTime", "", "フィルタ適用終了時刻(例: 2023-10-01 12:00:00)")
+	infoArg := flag.String("info", "", "詳細情報の表示オプション(例: all=全詳細情報を表示)")
 	version := flag.Bool("version", false, "バージョン情報の表示")
 	help := flag.Bool("help", false, "ヘルプ情報の表示")
 
@@ -87,6 +89,13 @@ func main() {
 
 	// 2. tsharkを使ってpcapファイルの情報取得
 	fmt.Println("ステップ2: パケット情報の取得...")
+	
+	// infoArgが "all" のときだけInfoAllをtrueにする
+	infoAll := *infoArg == "all"
+	if infoAll && *debugMode {
+		fmt.Println("全詳細情報表示モード: 有効")
+	}
+	
 	infoGetter := infogetter.NewTsharkInfoGetter(
 		*filePath,
 		*debugMode,
@@ -97,6 +106,7 @@ func main() {
 		*ipFlag,
 		*startTimeArg,
 		*endTimeArg,
+		infoAll,
 	)
 	packets, err := infoGetter.GetPacketInfo()
 	if err != nil {
@@ -143,12 +153,24 @@ func main() {
 
 // getPacketDetails はパケットの詳細情報を取得する
 func getPacketDetails(infoGetter infogetter.InfoGetter, packets []*models.Packet) error {
-
 	fmt.Printf("ステップ4: プロトコル詳細情報の解析...\n")
+
+	// infoGetterをTsharkInfoGetterにキャストしてデバッグモードを取得
+	tsharkGetter, ok := infoGetter.(*infogetter.TsharkInfoGetter)
+	isDebug := false
+	if ok {
+		isDebug = tsharkGetter.DebugMode
+	}
 
 	// この時点で既に詳細情報はプリロードされているはず
 	for i, packet := range packets {
-		fmt.Printf("パケット %d/%d (%s) の詳細情報を処理中...\n", i+1, len(packets), packet.Protocol)
+		if isDebug {
+			fmt.Printf("パケット %d/%d (%s) の詳細情報を処理中...\n", i+1, len(packets), packet.Protocol)
+		} else if (i+1)%1000 == 0 || i+1 == len(packets) {
+			// デバッグモードでなければ1000パケットごと、または最後のパケットのみ進捗を表示
+			fmt.Printf("パケット処理進捗: %d/%d\n", i+1, len(packets))
+		}
+		
 		err := infoGetter.GetDetailedInfo(packet)
 		if err != nil {
 			// 詳細情報の取得に失敗した場合はエラーメッセージを表示

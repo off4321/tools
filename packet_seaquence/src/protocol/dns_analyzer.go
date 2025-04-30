@@ -27,13 +27,14 @@ func NewDNSAnalyzer(debugMode bool) *DNSAnalyzer {
 // - クエリタイプ
 // - 応答数
 // - リプライコード
+// - トランザクションID（リクエスト/レスポンス関連付け用）
 func (a *DNSAnalyzer) Analyze(packet *models.Packet) ([]string, error) {
 	if packet.Protocol != "DNS" {
 		return nil, fmt.Errorf("プロトコルがDNSではありません: %s", packet.Protocol)
 	}
 
 	var details []string
-	var queryName, queryType, replyCode string
+	var queryName, queryType, replyCode, transactionID string
 
 	// レスポンスかどうかを判定
 	isResponse := strings.Contains(packet.Info, "response")
@@ -54,12 +55,19 @@ func (a *DNSAnalyzer) Analyze(packet *models.Packet) ([]string, error) {
 	nsRecordRe := regexp.MustCompile(`Type: NS \(`)
 	aaaaRecordRe := regexp.MustCompile(`Type: AAAA \(`)
 	cnameRecordRe := regexp.MustCompile(`Type: CNAME \(`)
+	
+	// トランザクションID抽出用のパターンを追加
+	transactionIdRe := regexp.MustCompile(`Transaction ID: (0x[0-9a-fA-F]+)`)
 
 	// パケットの詳細から情報を抽出
 	queriesFound := false
 	answersFound := false
 
 	for _, line := range packet.Details {
+		// トランザクションIDを抽出
+		if matches := transactionIdRe.FindStringSubmatch(line); len(matches) > 1 {
+			transactionID = matches[1]
+		}
 
 		// リプライコード (2種類のパターンに対応)
 		if matches := replyCodeRe.FindStringSubmatch(line); len(matches) > 1 {
@@ -116,6 +124,12 @@ func (a *DNSAnalyzer) Analyze(packet *models.Packet) ([]string, error) {
 		}
 	}
 
+	// トランザクションIDから関連パケットを検索（TsharkInfoGetterが必要）
+	if transactionID != "" {
+		// ※ この情報はTsharkInfoGetterの処理で使用される
+		packet.RelatedPackets["dns_transaction_id"] = transactionID
+	}
+
 	// 詳細情報を構築
 	if isResponse {
 		// レスポンスパケットの場合
@@ -127,6 +141,10 @@ func (a *DNSAnalyzer) Analyze(packet *models.Packet) ([]string, error) {
 
 		if replyCode != "" {
 			details = append(details, "Reply code: "+replyCode)
+		}
+		
+		if transactionID != "" {
+			details = append(details, "Transaction ID: "+transactionID)
 		}
 	} else {
 		// クエリパケットの場合
@@ -140,6 +158,10 @@ func (a *DNSAnalyzer) Analyze(packet *models.Packet) ([]string, error) {
 				queryName = matches[2]
 				details = append(details, "Query - "+queryName+", Type: "+queryType)
 			}
+		}
+		
+		if transactionID != "" {
+			details = append(details, "Transaction ID: "+transactionID)
 		}
 	}
 
